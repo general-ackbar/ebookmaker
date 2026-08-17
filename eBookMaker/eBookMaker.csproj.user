@@ -2,7 +2,7 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition=" '$(RunConfiguration)' == 'Default' ">
     <StartAction>Project</StartAction>
-    <StartArguments> /Users/jonatan/Desktop/Test/tmp/arkiv/ctrl/ Desktop/ctl /Users/jonatan/Desktop/Test/ppl/nova1.jpg</StartArguments>
+    <StartArguments>/Users/jonatan/Desktop/Test/tmp/arkiv/squares/ /Users/jonatan/Destop/Simple </StartArguments>
     <StartWorkingDirectory>.</StartWorkingDirectory>
   </PropertyGroup>
 </Project>

@@ -11,20 +11,21 @@ namespace eBookMaker
 {
     class MainClass
 	{
-		private static string images, input_path, name, output_path, home, cover;
+        private static int image_no = 0;
+        private static string images, input_path, name, output_path, home, cover, meta_path;
 		private static HtmlTextWriter htmlMain, htmlToc;
 		private static XmlTextWriter xmlNCX;
-		private static StringWriter mainWriter, tocWriter, ncxWriter;
+		private static StringWriter mainWriter, tocWriter, ncxWriter, opfWriter;
 
 		#region constants
-		private const string tocHeader = @"<!doctype html><html lang=""en""><head><title>Table of Contents</title><meta http-equiv=""content-type"" content=""text/html; charset=utf-8""><link rel=""stylesheet"" href=""style.css""></head><body><div id=""toc"">";
+		private const string tocHeader = @"<?xml version='1.0' encoding='utf-8'?><html lang=""en"" xmlns=""http://www.w3.org/1999/xhtml""><head><title>Table of Contents</title><meta http-equiv=""content-type"" content=""text/html; charset=utf-8"" /><link rel=""stylesheet"" href=""style.css"" /></head><body><div id=""toc"">";
         private const string tocFooter = @"</div></body></html>";
 
         private const string cssContent = @"h1 {page-break-before: always;} img {padding:0 0 2em 2em;} a {text-decoration: none;}";
 
-		private const string mainHeaderPart1 = @"<!doctype html><html lang=""en""><head><title>";
-		private const string mainHeaderPart2 = @"</title><meta http-equiv=""content-type"" content=""text/html; charset=utf-8""><link rel=""stylesheet"" href=""style.css""></head><body>";
-		private const string mainFooter = @"</body></html>";
+		private const string mainHeaderPart1 = @"<?xml version='1.0' encoding='utf-8'?><html lang=""en"" xmlns=""http://www.w3.org/1999/xhtml""><head><title>";
+		private const string mainHeaderPart2 = @"</title><meta http-equiv=""content-type"" content=""text/html; charset=utf-8"" /><link rel=""stylesheet"" href=""style.css"" /></head><body><div id=""book"">";
+		private const string mainFooter = @"</div></body></html>";
 		#endregion
 
 		public static void Main (string[] args)
@@ -55,6 +56,7 @@ namespace eBookMaker
 
             home = Directory.CreateDirectory(output_path).FullName;
             images = Directory.CreateDirectory(Path.Combine(home, "images")).FullName;
+			meta_path = Directory.CreateDirectory(Path.Combine(home, "META-INF")).FullName;
 
             string author, isbn, bookTitle, description;
 			Console.Write("Title:");
@@ -62,14 +64,21 @@ namespace eBookMaker
 			Console.Write("Author:");
 			author = Console.ReadLine();
 			Console.Write("ISBN:");
-			isbn = Console.ReadLine();
+			isbn = Console.ReadLine();			
 			Console.Write("Description:");
 			description = Console.ReadLine();
 
+			if (String.IsNullOrWhiteSpace(isbn))
+			{
+				Random rnd = new Random(DateTime.Now.Millisecond);
+				isbn = "978-0-01-" + rnd.Next(100000, 999999) + "-" + rnd.Next(0, 9);
+
+            }
 
 			mainWriter = new StringWriter ();
 			tocWriter = new StringWriter ();
 			ncxWriter = new StringWriter();
+			opfWriter = new StringWriter();
 
 			htmlMain = new HtmlTextWriter (mainWriter);
 			htmlToc = new HtmlTextWriter (tocWriter);
@@ -92,6 +101,7 @@ namespace eBookMaker
 				File.Copy(cover, Path.Combine(home, "cover.jpg"));
 			}
 
+			
 			TraverseDirectory (baseDirectory, 0);
 
 			htmlMain.Write (mainFooter);
@@ -129,7 +139,30 @@ namespace eBookMaker
 			streamToc.Flush ();
 			streamToc.Close ();
 
-		}
+            StreamWriter streamMimetype = new StreamWriter(File.OpenWrite(Path.Combine(home, "mimetype")));
+            streamMimetype.Write("application/epub+zip");
+            streamMimetype.Flush();
+            streamMimetype.Close();
+
+            StreamWriter streamContentXML = new StreamWriter(File.OpenWrite(Path.Combine(meta_path, "container.xml")));
+            streamContentXML.Write(GenerateContainerXML(name));
+            streamContentXML.Flush();
+            streamContentXML.Close();
+
+
+			Console.WriteLine("All done.");
+            Console.WriteLine("To export to .mobi download kindlegen and run the following command:");
+            Console.WriteLine("kindlegen " + name + Path.DirectorySeparatorChar + name + ".opf -o " + name + ".mobi");
+            Console.WriteLine("The file will be saved as " + name + ".mobi");
+            Console.WriteLine("");
+            Console.WriteLine("To export as .epub run the following commands:");
+            Console.WriteLine("cd " + name);
+            Console.WriteLine("zip -0 -X .." + Path.DirectorySeparatorChar + name + ".epub mimetype");
+            Console.WriteLine("zip -9 -X -r -u .." + Path.DirectorySeparatorChar + name + ".epub *");
+            Console.WriteLine("cd ..");
+            Console.WriteLine("The file will be saved as " + name + ".epub");
+
+        }
 
 
 		public static void TraverseDirectory (DirectoryInfo directory, int level)
@@ -170,13 +203,16 @@ namespace eBookMaker
 			string uid = Guid.NewGuid().ToString();
 			Directory.CreateDirectory(Path.Combine(images, uid));
 
-			foreach (FileInfo fi in directory.GetFiles ("*.jpg").Union(directory.GetFiles("*.png")).ToArray().OrderBy(f => f.Name) ) {
+            //foreach (FileInfo fi in directory.GetFiles("*.jpg").Union(directory.GetFiles("*.JPG")).Union(directory.GetFiles("*.jpeg")).Union(directory.GetFiles("*.JPEG")).Union(directory.GetFiles("*.png")).Union(directory.GetFiles("*.PNG")).ToArray().OrderBy(f => f.Name) ) {
+            foreach (FileInfo fi in directory.GetFiles("*.jpg").Union(directory.GetFiles("*.jpeg")).Union(directory.GetFiles("*.png")).ToArray().OrderBy(f => f.Name))
+            {
 
-				//Resize, convert to greyscale and save to new subfolder
-				try
+                string new_name = fi.Name.Replace(" ", "_").Replace(fi.Extension, ".jpg"); //  Path.Combine(images, uid, fi.Name.Replace(fi.Extension, "") + ".jpg").Replace(" ", "_");
+                //Resize, convert to greyscale and save to new subfolder
+                try
 				{
-					Bitmap img = convertToGreyscale(ResizeImage(new Bitmap(fi.FullName), new Size(600, 800)));
-					SaveJpeg(Path.Combine(images, uid, fi.Name), img, 80);
+                    Bitmap img = convertToGreyscale(ResizeImage(new Bitmap(fi.FullName), new Size(600, 800)));					                    
+                    SaveJpeg(Path.Combine(images, uid, new_name), img, 80); ;
 					img.Dispose();
 				}
 				catch (Exception ex)
@@ -187,15 +223,17 @@ namespace eBookMaker
 
 				if (String.IsNullOrEmpty(cover))
 				{
-					File.Copy(Path.Combine(images, uid, fi.Name), Path.Combine(home, "cover.jpg"), true);
+					File.Copy(Path.Combine(images, uid, new_name), Path.Combine(home, "cover.jpg"), true);
 					cover = "cover.jpg";
 				}
 
-				htmlMain.AddAttribute(HtmlTextWriterAttribute.Src, "images/" + uid + "/" + fi.Name, true);
+				htmlMain.AddAttribute(HtmlTextWriterAttribute.Src, "images/" + uid + "/" + new_name, true);
 				htmlMain.AddAttribute(HtmlTextWriterAttribute.Alt, "", true);
 				htmlMain.RenderBeginTag (HtmlTextWriterTag.Img);
 				htmlMain.RenderEndTag();
 				htmlMain.WriteLine();
+
+				opfWriter.WriteLine("<item id=\"ill_" + image_no++ + "\" href=\"" + "images/" + uid + "/" + new_name + "\" media-type=\"image/jpeg\" />");
 			}
 
 			foreach (DirectoryInfo di in directory.GetDirectories().OrderBy(f => f.Name))
@@ -207,16 +245,16 @@ namespace eBookMaker
 		public static string GenerateOPF(string title, string file, string isbn, string author, string description)
 		{
 			string date;
-			date = DateTime.UtcNow.ToShortDateString();
+			date = DateTime.UtcNow.ToString("yyyy-MM-dd"); // ToShortDateString();
 
 			string content =
 			@"<?xml version=""1.0""?>
 			<package version=""2.0"" xmlns=""http://www.idpf.org/2007/opf"" unique-identifier=""BookId"">
-			<metadata xmlns: dc=""http://purl.org/dc/elements/1.1/"" xmlns: opf=""http://www.idpf.org/2007/opf"">		  
+			<metadata xmlns:dc=""http://purl.org/dc/elements/1.1/"" xmlns:opf=""http://www.idpf.org/2007/opf"">		  
 				<dc:title> " + title + @" </dc:title>
 				<dc:language> en </dc:language>
-				<dc:identifier id=""BookId"" opf: scheme=""ISBN"">" + isbn + @"</dc:identifier>
-				<dc:creator opf:file -as= """ + author + @""" opf: role=""aut""> " + author + @" </dc:creator>
+				<dc:identifier id=""BookId"" opf:scheme=""ISBN"">" + isbn + @"</dc:identifier>
+				<dc:creator opf:file-as= """ + author + @""" opf:role=""aut""> " + author + @" </dc:creator>
 				<dc:publisher> Self-published </dc:publisher>
 				<dc:subject> Reference </dc:subject>
 				<dc:date> " + date + @" </dc:date>
@@ -229,7 +267,11 @@ namespace eBookMaker
 				<item id=""titlepage"" href=""titlepage.html"" media-type=""application/xhtml+xml"" />
 				<item id=""stylesheet"" href=""style.css"" media-type=""text/css"" />
 				<item id=""ncx"" href=""toc.ncx"" media-type=""application/x-dtbncx+xml"" />
-				<item id=""cover-image"" href=""cover.jpg"" media-type=""image/jpeg"" />
+				<item id=""cover-image"" href=""cover.jpg"" media-type=""image/jpeg"" />";
+
+			content += opfWriter.ToString();
+
+			content += @"
 			</manifest>
 			<!--Each itemref references the id of a document designated in the manifest. The order of the itemref elements organizes the associated content files into the linear reading order of the publication.  -->
 			<spine toc=""ncx"">
@@ -259,7 +301,7 @@ namespace eBookMaker
 		<head >
 			<!--The following four metadata items are required for all NCX documents, including those conforming to the relaxed constraints of OPS 2.0-->
 			<meta name=""dtb:uid"" content=""" + isbn +@""" /> <!--same as in .opf-->
-			<meta name=""dtb:depth"" content=""1"" /> < !--1 or higher-->
+			<meta name=""dtb:depth"" content=""1"" /> <!--1 or higher-->
 			<meta name=""dtb:totalPageCount"" content=""0"" /> <!--must be 0-->
 			<meta name=""dtb:maxPageNumber"" content=""0"" /> <!--must be 0-->	 
 		</head>
@@ -274,16 +316,30 @@ namespace eBookMaker
 			return content;
 		}
 
+		public static string GenerateContainerXML(string name)
+		{
+			string content =
+				@"<?xml version=""1.0"" encoding=""utf-8""?>
+					<container xmlns=""urn:oasis:names:tc:opendocument:xmlns:container"" version=""1.0"">
+						<rootfiles>
+							<rootfile full-path=""" + name + @".opf"" media-type=""application/oebps-package+xml""/>
+						</rootfiles>
+					</container>";
 
-		public static string GenerateTitlePage(string title, string author, string isbn)
+			return content;
+
+        }
+
+
+        public static string GenerateTitlePage(string title, string author, string isbn)
 		{
 			string content =
 		@"<?xml version='1.0' encoding='utf-8'?>
 		<html lang=""en"" xmlns=""http://www.w3.org/1999/xhtml"">
 			<head>
 			<title>" + title +@"</title>
-			<meta http-equiv=""content-type"" content=""text/html; charset=utf-8"">
-			<link rel=""stylesheet"" href=""style.css"">
+			<meta http-equiv=""content-type"" content=""text/html; charset=utf-8"" />
+			<link rel=""stylesheet"" href=""style.css"" />
 			</head>
 			<body>
 				<h1>" + title + @"</h1>
